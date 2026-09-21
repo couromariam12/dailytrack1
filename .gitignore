@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*token*
+*secret*
+*.tsbuildinfo
+.DS_Store
