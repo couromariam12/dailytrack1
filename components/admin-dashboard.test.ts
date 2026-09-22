@@ -35,4 +35,11 @@ describe("Admin normalized dataset", () => {
     expect(getCounts(data)).toEqual({ issues: 0, pulls: 1, commits: 0, reviews: 0 });
     expect(getByDayAndType(data)["2026-09-18"]).toBeUndefined();
   });
+
+  it("orders the time activity from the most recent day to the oldest", () => {
+    const data = bundle({
+      pulls: [pull("alice", "2026-09-17T09:00:00Z"), pull("alice", "2026-09-18T09:00:00Z")],
+    });
+    expect(Object.keys(getByDayAndType(data))).toEqual(["2026-09-18", "2026-09-17"]);
+  });
 });

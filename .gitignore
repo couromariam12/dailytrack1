@@ -11,7 +11,12 @@ out/
 *.temp
 *.swp
 *.swo
-*token*
+*.token
+*.token.*
+*token*.local
+!app/api/auth/token/**
+!components/token-login-form.tsx
+!lib/auth/token.ts
 *secret*
 *.tsbuildinfo
 .DS_Store

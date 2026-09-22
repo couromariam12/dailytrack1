@@ -13,6 +13,7 @@ Nouvelle application DailyTrack indépendante du projet Laravel historique.
 - aucune donnée fictive ;
 - serveur MCP Gitea local en lecture seule ;
 - aucune opération d’écriture vers Gitea.
+- exports Admin CSV et PDF générés côté serveur, protégés par le rôle Admin.
 
 ## Démarrage
 
@@ -63,6 +64,8 @@ Tous les appels de cette validation étaient des requêtes `GET`. Aucune opérat
 
 - `/` : accueil du socle ;
 - `/collaborator` : espace collaborateur vide ;
-- `/admin` : espace administrateur vide.
+- `/admin` : espace administrateur protégé avec filtres et exports CSV/PDF.
+
+La documentation des exports Admin se trouve dans [`docs/admin-exports.md`](docs/admin-exports.md).
 
 Le projet Laravel existant reste dans `/Users/courooo/Documents/dailytrack` et n’est pas modifié par cette application.

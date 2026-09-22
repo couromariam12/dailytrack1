@@ -11,8 +11,8 @@ import Sidebar from "@/components/sidebar";
 export default async function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const session = getSessionById((await cookies()).get(sessionCookie)?.value);
   const devStatus = getDevAuthStatus();
-  if (!session && devStatus === "disabled") redirect("/api/auth/gitea/login");
-  if (!session && devStatus === "forbidden") redirect("/api/auth/gitea/login");
+  if (!session && devStatus === "disabled") redirect("/settings?next=/collaborator");
+  if (!session && devStatus === "forbidden") redirect("/settings?next=/collaborator");
   let user = null;
   let repositories: Array<{ full_name: string | null; name: string | null; html_url: string | null }> = [];
   try {

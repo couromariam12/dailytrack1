@@ -1,14 +1,18 @@
-export type AuthErrorCode = "AUTH_CONFIGURATION" | "OAUTH_PROVIDER_ERROR" | "OAUTH_STATE_MISMATCH" | "OAUTH_INVALID_CALLBACK" | "SESSION_REQUIRED" | "SESSION_EXPIRED" | "SESSION_INVALID" | "DEV_AUTH_FORBIDDEN";
+export type AuthErrorCode = "AUTH_CONFIGURATION" | "OAUTH_PROVIDER_ERROR" | "OAUTH_STATE_MISMATCH" | "OAUTH_INVALID_CALLBACK" | "TOKEN_REQUIRED" | "TOKEN_INVALID" | "TOKEN_PROVIDER_ERROR" | "SESSION_REQUIRED" | "SESSION_EXPIRED" | "SESSION_INVALID" | "DEV_AUTH_FORBIDDEN" | "ADMIN_REQUIRED";
 
 const messages: Record<AuthErrorCode, string> = {
   AUTH_CONFIGURATION: "Authentication is not configured.",
   OAUTH_PROVIDER_ERROR: "Gitea OAuth authentication failed.",
   OAUTH_STATE_MISMATCH: "OAuth state validation failed.",
   OAUTH_INVALID_CALLBACK: "The OAuth callback is invalid.",
+  TOKEN_REQUIRED: "A Gitea personal token is required.",
+  TOKEN_INVALID: "The Gitea personal token is invalid.",
+  TOKEN_PROVIDER_ERROR: "Gitea could not validate the personal token.",
   SESSION_REQUIRED: "Authentication is required.",
   SESSION_EXPIRED: "The session has expired.",
   SESSION_INVALID: "The session is invalid.",
   DEV_AUTH_FORBIDDEN: "Development authentication is disabled in production.",
+  ADMIN_REQUIRED: "Administrator access is required.",
 };
 
 export class AuthError extends Error {

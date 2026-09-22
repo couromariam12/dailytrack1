@@ -40,6 +40,20 @@ AUTH_SECRET=
 
 La session mémoire convient au développement local. Une exécution multi-instance nécessitera ultérieurement un stockage serveur partagé, sans exposer le token au navigateur.
 
+## Connexion temporaire par token personnel
+
+Une connexion temporaire par token personnel est disponible depuis `/settings`. Elle ne remplace pas OAuth2 : le bouton « Utiliser OAuth Gitea » conserve le flux OAuth PKCE existant.
+
+- le token est envoyé uniquement à `POST /api/auth/token/login` par HTTPS/HTTP local ;
+- le serveur le vérifie avec `GET /api/v1/user` puis crée la même session serveur HTTP-only ;
+- le token est conservé uniquement dans la mémoire du processus, associé à l’identifiant de session ;
+- le navigateur ne reçoit jamais le token, qui n’est ni dans l’URL, ni dans `localStorage`, ni dans `sessionStorage`, ni dans les réponses ou logs ;
+- la session dure au maximum 8 heures et est perdue au redémarrage du serveur ;
+- « Paramètres » permet de remplacer le token, de tester la connexion et de supprimer immédiatement la session ;
+- les accès sans session redirigent vers `/settings`, tandis que les Route Handlers renvoient `401` ou `403` côté serveur.
+
+Ce mode est destiné au développement et à une utilisation temporaire. Pour la production, utiliser OAuth2 PKCE et un stockage de session serveur adapté.
+
 ## Mode d’authentification local de développement
 
 Pour mettre OAuth2 en pause uniquement en développement local, le mode suivant peut être activé :

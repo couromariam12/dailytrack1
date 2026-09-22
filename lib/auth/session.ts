@@ -2,12 +2,13 @@ import { randomBytes } from "node:crypto";
 import type { NextRequest, NextResponse } from "next/server";
 import { AuthError } from "./errors";
 import { sessionCookie } from "./oauth";
+import type { GiteaUserDto } from "@/lib/gitea/types";
 
-type Session = { accessToken: string; expiresAt: number | null };
+export type Session = { accessToken: string; expiresAt: number | null; user?: GiteaUserDto | null; method?: "oauth" | "token" };
 const sessions = new Map<string, Session>();
 const maxAge = 60 * 60 * 8;
 
-export function createSession(token: { accessToken: string; expiresAt: number | null }): string { const id = randomBytes(32).toString("base64url"); sessions.set(id, token); return id; }
+export function createSession(token: { accessToken: string; expiresAt: number | null; user?: GiteaUserDto | null; method?: "oauth" | "token" }): string { const id = randomBytes(32).toString("base64url"); sessions.set(id, token); return id; }
 export function deleteSession(id: string | undefined): void { if (id) sessions.delete(id); }
 export function clearSessionsForTests(): void { sessions.clear(); }
 export function getSession(request: NextRequest): Session | null { return getSessionById(request.cookies.get(sessionCookie)?.value); }

@@ -9,6 +9,8 @@ import { CommitList, DataState, IssueList, MetricCard, PullRequestList, ReviewLi
 type Result<T> = { data: T | null; error: string | null };
 type State<T> = { data: PaginatedDto<T> | null; error: string | null; loading: boolean };
 const blank = <T,>(): State<T> => ({ data: null, error: null, loading: false });
+const selectedDateStorageKey = "dailytrack.collaborator.selected-date";
+const isIsoDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 export default function CollaboratorDashboard() {
   const defaultDate = isoDate(lastWorkday(new Date()));
@@ -17,6 +19,7 @@ export default function CollaboratorDashboard() {
   const [repositories, setRepositories] = useState<State<RepositoryDto>>({ ...blank(), loading: true });
   const [repository, setRepository] = useState("");
   const [date, setDate] = useState(defaultDate);
+  const [dateReady, setDateReady] = useState(false);
   const [page, setPage] = useState(1);
   const [issues, setIssues] = useState<State<IssueDto>>(blank());
   const [pulls, setPulls] = useState<State<PullRequestDto>>(blank());
@@ -24,9 +27,17 @@ export default function CollaboratorDashboard() {
   const [reviews, setReviews] = useState<State<ReviewDto>>(blank());
 
   useEffect(() => { void loadUser(); void loadRepositories(); }, []);
+  useEffect(() => {
+    const storedDate = window.localStorage.getItem(selectedDateStorageKey);
+    if (storedDate && isIsoDate(storedDate)) setDate(storedDate);
+    setDateReady(true);
+  }, []);
+  useEffect(() => {
+    if (dateReady) window.localStorage.setItem(selectedDateStorageKey, date);
+  }, [date, dateReady]);
   // The loader is intentionally recreated with the current filters; the effect dependencies are the filter state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (me && repositories.data) void loadDailyActivity(repositories.data.items, repository, date, page); }, [me, repositories.data, repository, date, page]);
+  useEffect(() => { if (dateReady && me && repositories.data) void loadDailyActivity(repositories.data.items, repository, date, page); }, [dateReady, me, repositories.data, repository, date, page]);
 
   async function loadUser() { const result = await request<GiteaUserDto>("/api/me"); setMe(result.data); setMeError(result.error ?? ""); }
   async function loadRepositories() { const result = await request<PaginatedDto<RepositoryDto>>("/api/repositories?page=1&limit=100"); setRepositories({ data: result.data, error: result.error, loading: false }); }
@@ -66,5 +77,5 @@ export default function CollaboratorDashboard() {
 function DailySection<T>({ title, state, empty, children }: { title: string; state: State<T>; empty: string; children: React.ReactNode }) { return <Section title={title} count={state.data?.items.length}>{state.loading ? <DataState kind="loading" /> : state.data?.items.length ? <>{state.error && <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Certaines données Gitea sont indisponibles pour une partie des repositories.</p>}{children}</> : state.error ? <DataState kind="error" message={state.error} /> : <DataState kind="empty" message={empty} />}</Section>; }
 function pageData<T>(items: T[], page: number, hasMore: boolean): PaginatedDto<T> { return { items, pagination: { page, limit: 20, has_more: hasMore } }; }
 function firstError(errors: Array<string | null>): string | null { return errors.find((value): value is string => Boolean(value)) ?? null; }
-async function request<T>(url: string): Promise<Result<T>> { try { const response = await fetch(url); const body: unknown = await response.json(); if (!response.ok) return { data: null, error: response.status === 403 || response.status === 404 ? "Cette capacité Gitea est indisponible pour ce périmètre." : errorMessage(body, response.status) }; return { data: body as T, error: null }; } catch { return { data: null, error: "Impossible de joindre Gitea." }; } }
+async function request<T>(url: string): Promise<Result<T>> { try { const response = await fetch(url, { cache: "no-store" }); const body: unknown = await response.json(); if (!response.ok) return { data: null, error: response.status === 403 || response.status === 404 ? "Cette capacité Gitea est indisponible pour ce périmètre." : errorMessage(body, response.status) }; return { data: body as T, error: null }; } catch { return { data: null, error: "Impossible de joindre Gitea." }; } }
 function errorMessage(value: unknown, status: number): string { if (typeof value === "object" && value !== null && "error" in value) { const error = value.error; if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") return error.message; } return `Accès indisponible (${status})`; }
