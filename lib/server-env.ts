@@ -1,3 +1,6 @@
+/** Minimum length of AUTH_SECRET, which derives the session encryption key. */
+export const AUTH_SECRET_MIN_LENGTH = 32;
+
 export function getServerEnv() {
   return {
     giteaUrl: process.env.GITEA_URL ?? "",

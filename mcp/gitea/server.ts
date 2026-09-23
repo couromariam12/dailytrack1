@@ -6,7 +6,8 @@ import { GiteaClient } from "./client";
 import { registerGiteaTools } from "./tools";
 
 // This module is loaded only by the MCP stdio process, never by Next.js client code.
-config({ path: resolve(process.cwd(), ".env.local"), override: false });
+// .env.local takes precedence over .env; variables already set in the environment win over both.
+config({ path: [resolve(process.cwd(), ".env.local"), resolve(process.cwd(), ".env")], override: false, quiet: true });
 
 function createServer(): McpServer {
   const server = new McpServer({ name: "dailytrack-gitea", version: "0.1.0" });

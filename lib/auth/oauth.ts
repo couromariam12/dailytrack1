@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { getServerEnv } from "@/lib/server-env";
+import { AUTH_SECRET_MIN_LENGTH, getServerEnv } from "@/lib/server-env";
 import { AuthError } from "./errors";
 
 export const oauthStateCookie = "dailytrack_oauth_state";
@@ -14,7 +14,7 @@ export function challengeFor(verifier: string): string { return createHash("sha2
 
 export function authorizationUrl(input: OAuthState): URL {
   const env = getServerEnv();
-  if (!env.giteaUrl || !env.giteaOauthClientId || !env.giteaRedirectUri || !env.authSecret) throw new AuthError("AUTH_CONFIGURATION", 503);
+  assertOAuthConfiguration(env);
   const url = new URL("/login/oauth/authorize", env.giteaUrl);
   url.searchParams.set("client_id", env.giteaOauthClientId); url.searchParams.set("redirect_uri", env.giteaRedirectUri); url.searchParams.set("response_type", "code"); url.searchParams.set("scope", env.giteaOauthScopes); url.searchParams.set("state", input.state); url.searchParams.set("code_challenge", challengeFor(input.verifier)); url.searchParams.set("code_challenge_method", "S256");
   return url;
@@ -22,7 +22,7 @@ export function authorizationUrl(input: OAuthState): URL {
 
 export async function exchangeCode(code: string, verifier: string): Promise<OAuthToken> {
   const env = getServerEnv();
-  if (!env.giteaUrl || !env.giteaOauthClientId || !env.giteaRedirectUri || !env.authSecret) throw new AuthError("AUTH_CONFIGURATION", 503);
+  assertOAuthConfiguration(env);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, env.giteaTimeoutSeconds * 1000));
   try {
@@ -35,4 +35,8 @@ export async function exchangeCode(code: string, verifier: string): Promise<OAut
     const expires = typeof payload.expires_in === "number" ? Date.now() + payload.expires_in * 1000 : null;
     return { accessToken: payload.access_token, expiresAt: expires };
   } catch (error) { if (error instanceof AuthError) throw error; throw new AuthError("OAUTH_PROVIDER_ERROR"); } finally { clearTimeout(timeout); }
+}
+
+function assertOAuthConfiguration(env: ReturnType<typeof getServerEnv>): void {
+  if (!env.giteaUrl || !env.giteaOauthClientId || !env.giteaRedirectUri || env.authSecret.length < AUTH_SECRET_MIN_LENGTH) throw new AuthError("AUTH_CONFIGURATION", 503);
 }

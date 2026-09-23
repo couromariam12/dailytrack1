@@ -1,6 +1,4 @@
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
-export type JsonObject = { [key: string]: JsonValue };
+export type { JsonObject, JsonPrimitive, JsonValue } from "../../lib/gitea/types";
 
 export interface GiteaClientConfig { baseUrl: string; token: string; timeoutMs: number; }
 export interface PaginationInput { page: number; limit: number; }

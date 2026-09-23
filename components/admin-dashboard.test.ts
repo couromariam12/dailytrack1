@@ -3,12 +3,11 @@ import type { CommitDto, IssueDto, PullRequestDto, ReviewDto } from "@/lib/gitea
 import { filterBundle, getByDayAndType, getCollaboratorVolumes, getCounts, type Bundle } from "./admin-dashboard";
 
 const user = (login: string) => ({ id: null, login, full_name: null, html_url: null, avatar_url: null });
-const errors = { issues: null, pulls: null, commits: null, reviews: null };
 const issue = (type: IssueDto["type"], login: string, date: string): IssueDto => ({ id: null, number: null, type, title: null, state: "open", author: user(login), assignees: [], labels: [], created_at: date, updated_at: date, html_url: null });
 const pull = (login: string, date: string): PullRequestDto => ({ id: null, index: 7, number: 7, title: null, state: "open", author: user(login), created_at: date, updated_at: date, closed_at: null, merged: null, merged_at: null, merged_by: null, html_url: null });
 const commit = (author: string, committer: string, date: string): CommitDto => ({ sha: author + date, message: null, author: user(author), committer: user(committer), created_at: date, html_url: null });
 const review = (login: string, date: string): ReviewDto => ({ id: null, state: "APPROVED", author: user(login), submitted_at: date, updated_at: date, html_url: null });
-const bundle = (overrides: Partial<Bundle> = {}): Bundle => ({ issues: [], pulls: [], commits: [], reviews: [], errors, ...overrides });
+const bundle = (overrides: Partial<Bundle> = {}): Bundle => ({ issues: [], pulls: [], commits: [], reviews: [], warnings: [], ...overrides });
 
 describe("Admin normalized dataset", () => {
   it("keeps pull requests out of ticket KPI and charts", () => {
@@ -28,6 +27,11 @@ describe("Admin normalized dataset", () => {
     const assigned = issue("issue", "bob", "2026-09-18T08:00:00Z");
     assigned.assignees = [user("alice")];
     expect(getCollaboratorVolumes(bundle({ issues: [assigned] }))).toEqual([{ login: "alice", count: 1 }, { login: "bob", count: 1 }]);
+  });
+
+  it("buckets activity on UTC days whatever offset Gitea used", () => {
+    const data = bundle({ commits: [commit("alice", "alice", "2026-09-19T00:30:00+02:00")] });
+    expect(Object.keys(getByDayAndType(data))).toEqual(["2026-09-18"]);
   });
 
   it("preserves real empty periods instead of creating activity", () => {

@@ -4,16 +4,32 @@ Cette couche permet à l’application Next.js de lire Gitea directement côté 
 
 ## Sécurité et transport
 
-- `GITEA_URL`, `GITEA_TOKEN` et `GITEA_TIMEOUT_SECONDS` sont lus depuis `process.env` dans `lib/gitea/client.ts`.
+- `GITEA_URL` et `GITEA_TIMEOUT_SECONDS` sont lus côté serveur ; chaque requête utilise le token OAuth de l’utilisateur (ou `GITEA_TOKEN` en mode dev uniquement), sans repli implicite.
 - Les Route Handlers Next.js sont des modules serveur ; aucun composant React ne contacte Gitea.
 - Le token est uniquement envoyé dans l’en-tête `Authorization` côté serveur.
 - Les erreurs retournées au client sont génériques et ne contiennent pas le token ni la réponse brute Gitea.
 - Le client ne construit que des requêtes `GET`.
 - Les limites de page sont comprises entre 1 et 100.
 
-## Routes
+## Routes agrégées
 
-Toutes les routes retournent des DTO DailyTrack normalisés. Les listes utilisent `page` et `limit` obligatoires.
+Ces routes suivent toute la pagination Gitea côté serveur et renvoient `{ issues, pulls, commits, reviews, warnings }`. Les dates sont des instants ISO 8601 ; un intervalle doit fournir ses deux bornes.
+
+```http
+GET /api/daily?date=2026-09-22[&repository=owner/name]
+```
+
+Activité de l’utilisateur connecté pour une journée UTC, sur tous les repositories non archivés (ou un seul). Ajoute `user`, `date` et `repositories` (nombre de repositories analysés).
+
+```http
+GET /api/activity?owner=acme&repository=app[&since=…&until=…][&state=all|open|closed][&created_by=login][&assigned_by=login][&types=issues,pulls,commits,reviews]
+```
+
+Activité d’un repository. `warnings` liste les types en erreur (`GITEA_*`) ou tronqués (`TRUNCATED`, au-delà de 20 pages de 50 éléments).
+
+## Routes unitaires
+
+Toutes les routes retournent des DTO DailyTrack normalisés. Les listes utilisent `page` et `limit` obligatoires. Gitea plafonne une page à 50 éléments : `has_more` vaut `true` dès qu’une page est pleine. Un filtre de date incomplet (`since` sans `until`/`before`) ou inversé est refusé en `400 INVALID_PARAMETERS`.
 
 ### Utilisateur courant
 
@@ -68,6 +84,7 @@ Filtres pris en charge : `sha`, `path`, `since`, `until`, `verification`.
 | Situation | HTTP | Code |
 | --- | ---: | --- |
 | Paramètres invalides | 400 | `INVALID_PARAMETERS` |
+| Session absente, expirée ou invalide | 401 | `SESSION_REQUIRED`, `SESSION_EXPIRED`, `SESSION_INVALID` |
 | Token invalide | 401 | `GITEA_UNAUTHORIZED` |
 | Accès refusé | 403 | `GITEA_FORBIDDEN` |
 | Ressource absente | 404 | `GITEA_NOT_FOUND` |

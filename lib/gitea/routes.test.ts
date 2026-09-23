@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { GiteaAdapterError } from "./errors";
-import { commits, currentUser, issues, pullRequests, repositories, routeError } from "./routes";
+import { allRepositories, commits, currentUser, issues, pullRequests, repositories, routeError, schemas } from "./routes";
 import type { GiteaServerClient } from "./client";
 
 const client = {
@@ -43,6 +43,23 @@ describe("Next.js Gitea adapter", () => {
       { number: 2, user: { login: "alice" }, created_at: "2026-09-19T00:00:00Z" },
     ]) } as unknown as GiteaServerClient;
     await expect(issues({ owner: "acme", repository: "app", page: 1, limit: 20, since: "2026-09-18T00:00:00Z", before: "2026-09-19T00:00:00Z" }, issueClient)).resolves.toMatchObject({ items: [{ number: 1 }] });
+  });
+
+  it("rejects an incomplete or inverted date range instead of silently returning nothing", () => {
+    const base = { owner: "acme", repository: "app", page: "1", limit: "20" };
+    expect(schemas.pullRequests.safeParse({ ...base, since: "2026-09-18T00:00:00Z" }).success).toBe(false);
+    expect(schemas.commits.safeParse({ ...base, since: "2026-09-19T00:00:00Z", until: "2026-09-18T00:00:00Z" }).success).toBe(false);
+    expect(schemas.issues.safeParse({ ...base, since: "2026-09-18T00:00:00Z", before: "2026-09-19T00:00:00Z" }).success).toBe(true);
+    expect(schemas.reviews.safeParse({ ...base, index: "1", since: "not-a-date", until: "2026-09-19T00:00:00Z" }).success).toBe(false);
+  });
+
+  it("reads every repository page", async () => {
+    const listRepositories = vi.fn()
+      .mockResolvedValueOnce(Array.from({ length: 50 }, (_, index) => ({ id: index, full_name: `acme/r${index}` })))
+      .mockResolvedValueOnce([{ id: 50, full_name: "acme/r50" }]);
+    const result = await allRepositories({ listRepositories } as unknown as GiteaServerClient);
+    expect(result).toHaveLength(51);
+    expect(listRepositories).toHaveBeenLastCalledWith(2, 50);
   });
 
   it("maps adapter errors to safe HTTP statuses", () => {

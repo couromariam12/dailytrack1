@@ -1,9 +1,11 @@
 {
   "mcpServers": {
     "dailytrack-gitea": {
-      "command": "/Users/courooo/Desktop/dailytrack1/node_modules/.bin/tsx",
-      "args": ["/Users/courooo/Desktop/dailytrack1/mcp/gitea/server.ts"],
-      "cwd": "/Users/courooo/Desktop/dailytrack1"
+      "command": "node",
+      "args": [
+        "node_modules/tsx/dist/cli.mjs",
+        "mcp/gitea/server.ts"
+      ]
     }
   }
 }

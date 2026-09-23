@@ -4,7 +4,7 @@ Serveur MCP local TypeScript connecté à Gitea en lecture seule.
 
 ## Variables
 
-Le processus MCP charge explicitement `.env.local` au démarrage avec `dotenv`, puis lit `GITEA_URL`, `GITEA_TOKEN` et `GITEA_TIMEOUT_SECONDS` via `process.env`. Ce chargement existe uniquement dans `mcp/gitea/server.ts` et n’est jamais importé par le navigateur ou l’interface Next.js. Le fichier `.env.example` documente les noms attendus, mais ne contient aucun secret. `.env.local` est ignoré par Git.
+Le processus MCP charge `.env.local` puis `.env` au démarrage avec `dotenv` (sans rien écrire sur stdout), puis lit `GITEA_URL`, `GITEA_TOKEN` et `GITEA_TIMEOUT_SECONDS` via `process.env`. Ce chargement existe uniquement dans `mcp/gitea/server.ts` et n’est jamais importé par le navigateur ou l’interface Next.js. Le fichier `.env.example` documente les noms attendus, mais ne contient aucun secret. `.env.local` est ignoré par Git.
 
 Pour un lancement manuel :
 

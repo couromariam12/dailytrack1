@@ -1,100 +1,213 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { CommitDto, IssueDto, PaginatedDto, PullRequestDto, RepositoryDto, ReviewDto } from "@/lib/gitea/types";
-import { CommitList, DataState, IssueList, MetricCard, PullRequestList, ReviewList, Section } from "./collaborator-ui";
+import type { ActivityBundle } from "@/lib/activity/types";
+import { periodOptions, periodRange, utcDay, type Period } from "@/lib/date/range";
+import type { RepositoryDto } from "@/lib/gitea/types";
+import { request, requestAllPages, warningsFor, type Loadable } from "./api-client";
+import { ActivityState, CommitList, DataState, IssueList, MetricCard, Pagination, PullRequestList, ReviewList, Section, pageCount, pageOf } from "./collaborator-ui";
 
-type Period = "all" | "today" | "this_week" | "previous_week" | "this_month" | "previous_month";
-type Result<T> = { data: T | null; error: string | null };
-type Dataset<T> = { data: PaginatedDto<T> | null; error: string | null; loading: boolean };
-export type ActivityErrors = { issues: string | null; pulls: string | null; commits: string | null; reviews: string | null };
-export type Bundle = { issues: IssueDto[]; pulls: PullRequestDto[]; commits: CommitDto[]; reviews: ReviewDto[]; errors: ActivityErrors };
-
-const periodOptions: Array<[Period, string]> = [["all", "Toutes les dates"], ["today", "Aujourd’hui"], ["this_week", "Cette semaine"], ["previous_week", "Semaine précédente"], ["this_month", "Ce mois"]];
-const emptyErrors = (): ActivityErrors => ({ issues: null, pulls: null, commits: null, reviews: null });
-const emptyBundle = (): Bundle => ({ issues: [], pulls: [], commits: [], reviews: [], errors: emptyErrors() });
+export type Bundle = ActivityBundle;
+type DayCounts = { issues: number; pulls: number; commits: number; reviews: number };
 
 export default function AdminDashboard() {
-  const [repositories, setRepositories] = useState<Dataset<RepositoryDto>>({ data: null, error: null, loading: true });
+  const [repositories, setRepositories] = useState<Loadable<RepositoryDto[]>>({ data: null, error: null, loading: true });
   const [selectedRepository, setSelectedRepository] = useState("");
   const [selectedCollaborator, setSelectedCollaborator] = useState("");
-  const [period, setPeriod] = useState<Period>("all");
+  const [period, setPeriod] = useState<Period>("this_week");
   const [page, setPage] = useState(1);
-  const [bundle, setBundle] = useState<Dataset<Bundle>>({ data: null, error: null, loading: false });
+  const [bundle, setBundle] = useState<Loadable<Bundle>>({ data: null, error: null, loading: false });
 
-  // The repository loader is defined inside the component to keep server requests scoped to this page.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { void loadRepositories(); }, []);
-  // The activity loader intentionally follows the selected repository and period.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (selectedRepository) void loadActivity(); }, [selectedRepository, period]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void requestAllPages<RepositoryDto>("/api/repositories?limit=50", controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      setRepositories({ data: result.data, error: result.error, loading: false });
+      setSelectedRepository((current) => current || result.data?.find((item) => item.full_name)?.full_name || "");
+    });
+    return () => controller.abort();
+  }, []);
 
-  async function loadRepositories() {
-    const result = await requestAllPages<RepositoryDto>("/api/repositories?page=1&limit=100");
-    const data = result.data ? { items: result.data, pagination: { page: 1, limit: 100, has_more: false } } : null;
-    setRepositories({ data, error: result.error, loading: false });
-    if (!selectedRepository && data?.items[0]?.full_name) setSelectedRepository(data.items[0].full_name);
-  }
-
-  async function loadActivity() {
+  useEffect(() => {
     const [owner, repository] = selectedRepository.split("/", 2);
     if (!owner || !repository) return;
-    setBundle((current) => ({ ...current, loading: true, error: null }));
-    const baseQuery = new URLSearchParams({ owner, repository, page: "1", limit: "20", state: "all" });
+    const controller = new AbortController();
+    const query = new URLSearchParams({ owner, repository, state: "all" });
     const range = periodRange(period);
-    if (range) { baseQuery.set("since", range.since); baseQuery.set("until", range.until); }
+    if (range) { query.set("since", range.start); query.set("until", range.end); }
+    setBundle((current) => ({ ...current, loading: true, error: null }));
+    void request<Bundle>(`/api/activity?${query}`, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      setBundle({ data: result.data, error: result.error, loading: false });
+      setPage(1);
+    });
+    return () => controller.abort();
+  }, [selectedRepository, period]);
 
-    const issueQuery = new URLSearchParams(baseQuery);
-    issueQuery.set("type", "issues");
-    if (range) { issueQuery.delete("until"); issueQuery.set("before", range.until); }
-    const [issue, pull, commit] = await Promise.all([
-      requestAllPages<IssueDto>(`/api/issues?${issueQuery}`),
-      requestAllPages<PullRequestDto>(`/api/pull-requests?${baseQuery}`),
-      requestAllPages<CommitDto>(`/api/commits?${baseQuery}`),
-    ]);
+  const current = bundle.data;
+  const collaborators = useMemo(() => (current ? getCollaborators(current) : []), [current]);
+  const filtered = useMemo(() => (current ? filterBundle(current, selectedCollaborator) : null), [current, selectedCollaborator]);
+  const counts = filtered ? getCounts(filtered) : { issues: 0, pulls: 0, commits: 0, reviews: 0 };
+  const total = counts.issues + counts.pulls + counts.commits + counts.reviews;
+  const byDay = filtered ? getByDayAndType(filtered) : {};
+  const byCollaborator = filtered ? getCollaboratorVolumes(filtered) : [];
+  const byType = [
+    { label: "Tickets", value: counts.issues, color: "bg-sky-600" },
+    { label: "Pull requests", value: counts.pulls, color: "bg-violet-600" },
+    { label: "Commits", value: counts.commits, color: "bg-emerald-600" },
+    { label: "Reviews", value: counts.reviews, color: "bg-amber-500" },
+  ];
+  const pages = pageCount(counts.issues, counts.pulls, counts.commits, counts.reviews);
+  const metric = (value: number) => (bundle.loading || !filtered ? null : value);
+  const state = (kind: "issues" | "pulls" | "commits" | "reviews") => ({ loading: bundle.loading, error: bundle.error, warnings: warningsFor(current, kind) });
+  const selectClass = "rounded-xl border border-slate-200 bg-white px-3 py-2 font-normal";
+  const labelClass = "flex flex-col gap-2 text-sm font-semibold text-slate-700";
 
-    const reviewResults = await Promise.all((pull.data ?? []).filter((item) => item.index !== null).map(async (item) => ({
-      result: await requestAllPages<ReviewDto>(`/api/reviews?${baseQuery}&index=${item.index}`),
-      parentUrl: item.html_url,
-    })));
-    const data: Bundle = {
-      issues: (issue.data ?? []).filter((item) => item.type === "issue"),
-      pulls: pull.data ?? [],
-      commits: commit.data ?? [],
-      reviews: reviewResults.flatMap(({ result, parentUrl }) => (result.data ?? []).map((item) => ({ ...item, pull_request_url: parentUrl }))),
-      errors: {
-        issues: issue.error,
-        pulls: pull.error,
-        commits: commit.error,
-        reviews: reviewResults.map(({ result }) => result.error).find(Boolean) ?? null,
-      },
-    };
-    const errors = Object.values(data.errors).filter(Boolean).join(" ");
-    setBundle({ data: { items: [data], pagination: { page: 1, limit: 20, has_more: false } }, error: errors || null, loading: false });
-    setPage(1);
-  }
+  return (
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <header>
+        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-sky-700">Espace Admin</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Activité des repositories</h1>
+        <p className="mt-3 max-w-2xl text-slate-600">Une lecture descriptive des activités réellement retournées par Gitea, avec les droits de votre compte.</p>
+      </header>
 
-  const current = useMemo(() => bundle.data?.items[0] ?? emptyBundle(), [bundle.data]);
-  const collaborators = useMemo(() => getCollaborators(current), [current]);
-  const filtered = useMemo(() => filterBundle(current, selectedCollaborator), [current, selectedCollaborator]);
-  const counts = getCounts(filtered);
-  const byDay = getByDayAndType(filtered);
-  const byType = [{ label: "Tickets", value: counts.issues, color: "bg-sky-600" }, { label: "Pull requests", value: counts.pulls, color: "bg-violet-600" }, { label: "Commits", value: counts.commits, color: "bg-emerald-600" }, { label: "Reviews", value: counts.reviews, color: "bg-amber-500" }];
-  const byCollaborator = getCollaboratorVolumes(filtered);
-  const hasNext = page * 20 < Math.max(filtered.issues.length, filtered.pulls.length, filtered.commits.length, filtered.reviews.length);
-  const changeRepository = (value: string) => { setSelectedRepository(value); setSelectedCollaborator(""); setPage(1); };
-  const changeCollaborator = (value: string) => { setSelectedCollaborator(value); setPage(1); };
+      <section className="grid gap-4 lg:grid-cols-3">
+        <label className={labelClass}>Repository
+          <select value={selectedRepository} onChange={(event) => { setSelectedRepository(event.target.value); setSelectedCollaborator(""); }} className={selectClass}>
+            {repositories.data?.map((item) => item.full_name ? <option key={item.full_name} value={item.full_name}>{item.full_name}{item.archived ? " (archivé)" : ""}</option> : null)}
+          </select>
+        </label>
+        <label className={labelClass}>Collaborateur
+          <select value={selectedCollaborator} onChange={(event) => { setSelectedCollaborator(event.target.value); setPage(1); }} className={selectClass}>
+            <option value="">Tous les collaborateurs</option>
+            {collaborators.map((person) => <option key={person} value={person}>{person}</option>)}
+          </select>
+        </label>
+        <label className={labelClass}>Période (UTC)
+          <select value={period} onChange={(event) => setPeriod(event.target.value as Period)} className={selectClass}>
+            {periodOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+      </section>
 
-  return <div className="mx-auto w-full max-w-7xl space-y-6"><header><p className="text-sm font-semibold uppercase tracking-[0.16em] text-sky-700">Espace Admin</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Activité des repositories</h1><p className="mt-3 max-w-2xl text-slate-600">Une lecture descriptive des activités réellement retournées par Gitea.</p></header><section className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr]"><label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">Repository<select value={selectedRepository} onChange={(event) => changeRepository(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-normal">{repositories.data?.items.map((item) => item.full_name ? <option key={item.full_name} value={item.full_name}>{item.full_name}</option> : null)}</select></label><label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">Collaborateur<select value={selectedCollaborator} onChange={(event) => changeCollaborator(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-normal"><option value="">Tous les collaborateurs</option>{collaborators.map((person) => <option key={person} value={person}>{person}</option>)}</select></label><label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">Période<select value={period} onChange={(event) => { setPeriod(event.target.value as Period); setPage(1); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-normal">{periodOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></section>{repositories.loading && <DataState kind="loading" message="Chargement des repositories Gitea…" />}{repositories.error && <DataState kind="error" message={repositories.error} />}{!repositories.loading && !repositories.error && !repositories.data?.items.length && <DataState kind="empty" message="Aucun repository accessible depuis Gitea." />}{bundle.error && <DataState kind="error" message={bundle.error} />}{bundle.loading && <DataState kind="loading" message="Chargement de l’activité Gitea…" />}<section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Tickets" value={counts.issues} detail="Issues retournées pour le périmètre sélectionné." /><MetricCard label="Pull requests" value={counts.pulls} detail="Pull requests retournées pour le périmètre sélectionné." /><MetricCard label="Commits" value={counts.commits} detail="Commits retournés pour le périmètre sélectionné." /><MetricCard label="Reviews" value={counts.reviews} detail="Reviews retournées pour le périmètre sélectionné." /></section><div className="grid gap-5 xl:grid-cols-2"><Section title="Activité dans le temps"><div className="space-y-3">{Object.keys(byDay).length ? Object.entries(byDay).map(([day, values]) => <div key={day} className="rounded-xl bg-slate-50 p-3"><p className="mb-2 text-sm font-semibold text-slate-800">{day}</p><div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4"><span>Tickets <strong className="text-slate-900">{values.issues}</strong></span><span>PR <strong className="text-slate-900">{values.pulls}</strong></span><span>Commits <strong className="text-slate-900">{values.commits}</strong></span><span>Reviews <strong className="text-slate-900">{values.reviews}</strong></span></div></div>) : <DataState kind="empty" message="Aucune activité réelle pour cette période." />}</div></Section><Section title="Répartition par type"><div className="space-y-3">{byType.some((item) => item.value > 0) ? byType.map((item) => <div key={item.label}><div className="mb-1 flex justify-between text-sm"><span>{item.label}</span><strong>{item.value}</strong></div><div className="h-2 rounded-full bg-slate-100"><div className={`${item.color} h-2 rounded-full`} style={{ width: `${counts.issues + counts.pulls + counts.commits + counts.reviews ? (item.value / (counts.issues + counts.pulls + counts.commits + counts.reviews)) * 100 : 0}%` }} /></div></div>) : <DataState kind="empty" message="Aucune activité réelle à répartir." />}</div></Section></div><Section title="Activité par collaborateur" action={<span className="text-sm text-slate-500">Volume descriptif, sans classement de productivité</span>}><div className="space-y-3">{byCollaborator.length ? byCollaborator.map((item) => <div key={item.login} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span className="text-sm text-slate-800">{item.login}</span><span className="text-sm font-semibold text-slate-900">{item.count} activité{item.count > 1 ? "s" : ""}</span></div>) : <DataState kind="empty" message="Aucun collaborateur identifié dans cette période." />}</div></Section><div className="grid gap-5 xl:grid-cols-2"><Section title="Tickets / issues"><ActivitySection state={bundle} error={current.errors.issues} items={filtered.issues} empty="Aucun ticket pour ce périmètre."><IssueList data={pageOf(filtered.issues, page)} currentLogin={null} /></ActivitySection></Section><Section title="Pull requests"><ActivitySection state={bundle} error={current.errors.pulls} items={filtered.pulls} empty="Aucune pull request pour ce périmètre."><PullRequestList data={pageOf(filtered.pulls, page)} currentLogin={null} /></ActivitySection></Section><Section title="Commits"><ActivitySection state={bundle} error={current.errors.commits} items={filtered.commits} empty="Aucun commit pour ce périmètre."><CommitList data={pageOf(filtered.commits, page)} currentLogin={null} /></ActivitySection></Section><Section title="Reviews"><ActivitySection state={bundle} error={current.errors.reviews} items={filtered.reviews} empty="Aucune review pour ce périmètre."><ReviewList data={pageOf(filtered.reviews, page)} /></ActivitySection></Section></div><nav className="flex items-center justify-between border-t border-slate-200 pt-4" aria-label="Pagination admin"><button type="button" disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:opacity-40">Précédent</button><span className="text-sm text-slate-500">Page {page}</span><button type="button" disabled={!hasNext} onClick={() => setPage((value) => value + 1)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:opacity-40">Suivant</button></nav></div>;
+      {repositories.loading && <DataState kind="loading" message="Chargement des repositories Gitea…" />}
+      {repositories.error && <DataState kind="error" message={repositories.error} />}
+      {!repositories.loading && !repositories.error && !repositories.data?.length && <DataState kind="empty" message="Aucun repository accessible depuis Gitea." />}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Tickets" value={metric(counts.issues)} detail="Issues créées sur la période." />
+        <MetricCard label="Pull requests" value={metric(counts.pulls)} detail="Pull requests ouvertes sur la période." />
+        <MetricCard label="Commits" value={metric(counts.commits)} detail="Commits de la branche par défaut sur la période." />
+        <MetricCard label="Reviews" value={metric(counts.reviews)} detail="Reviews soumises sur la période." />
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Section title="Activité dans le temps" scroll>
+          <div className="space-y-3">
+            {Object.keys(byDay).length ? Object.entries(byDay).map(([day, values]) => (
+              <div key={day} className="rounded-xl bg-slate-50 p-3">
+                <p className="mb-2 text-sm font-semibold text-slate-800">{day}</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
+                  <span>Tickets <strong className="text-slate-900">{values.issues}</strong></span>
+                  <span>PR <strong className="text-slate-900">{values.pulls}</strong></span>
+                  <span>Commits <strong className="text-slate-900">{values.commits}</strong></span>
+                  <span>Reviews <strong className="text-slate-900">{values.reviews}</strong></span>
+                </div>
+              </div>
+            )) : <DataState kind={bundle.loading ? "loading" : "empty"} message={bundle.loading ? undefined : "Aucune activité réelle pour cette période."} />}
+          </div>
+        </Section>
+        <Section title="Répartition par type" scroll>
+          <div className="space-y-3">
+            {total ? byType.map((item) => (
+              <div key={item.label}>
+                <div className="mb-1 flex justify-between text-sm"><span>{item.label}</span><strong>{item.value}</strong></div>
+                <div className="h-2 rounded-full bg-slate-100"><div className={`${item.color} h-2 rounded-full`} style={{ width: `${(item.value / total) * 100}%` }} /></div>
+              </div>
+            )) : <DataState kind={bundle.loading ? "loading" : "empty"} message={bundle.loading ? undefined : "Aucune activité réelle à répartir."} />}
+          </div>
+        </Section>
+      </div>
+
+      <Section title="Activité par collaborateur" scroll action={<span className="text-sm text-slate-500">Volume descriptif, sans classement de productivité</span>}>
+        <div className="space-y-3">
+          {byCollaborator.length ? byCollaborator.map((item) => (
+            <div key={item.login} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+              <span className="text-sm text-slate-800">{item.login}</span>
+              <span className="text-sm font-semibold text-slate-900">{item.count} activité{item.count > 1 ? "s" : ""}</span>
+            </div>
+          )) : <DataState kind={bundle.loading ? "loading" : "empty"} message={bundle.loading ? undefined : "Aucun collaborateur identifié dans cette période."} />}
+        </div>
+      </Section>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Section title="Tickets / issues" count={metric(counts.issues) ?? undefined}>
+          <ActivityState {...state("issues")} count={counts.issues} empty="Aucun ticket pour ce périmètre."><IssueList items={pageOf(filtered?.issues ?? [], page)} currentLogin={null} /></ActivityState>
+        </Section>
+        <Section title="Pull requests" count={metric(counts.pulls) ?? undefined}>
+          <ActivityState {...state("pulls")} count={counts.pulls} empty="Aucune pull request pour ce périmètre."><PullRequestList items={pageOf(filtered?.pulls ?? [], page)} currentLogin={null} /></ActivityState>
+        </Section>
+        <Section title="Commits" count={metric(counts.commits) ?? undefined}>
+          <ActivityState {...state("commits")} count={counts.commits} empty="Aucun commit pour ce périmètre."><CommitList items={pageOf(filtered?.commits ?? [], page)} currentLogin={null} /></ActivityState>
+        </Section>
+        <Section title="Reviews" count={metric(counts.reviews) ?? undefined}>
+          <ActivityState {...state("reviews")} count={counts.reviews} empty="Aucune review pour ce périmètre."><ReviewList items={pageOf(filtered?.reviews ?? [], page)} /></ActivityState>
+        </Section>
+      </div>
+      <Pagination page={page} pages={pages} onChange={setPage} label="Pagination admin" />
+    </div>
+  );
 }
 
-function ActivitySection({ state, error, items, empty, children }: { state: Dataset<Bundle>; error: string | null; items: unknown[]; empty: string; children: React.ReactNode }) { return state.loading ? <DataState kind="loading" /> : items.length ? children : error ? <DataState kind="error" message={error} /> : <DataState kind="empty" message={empty} />; }
-function pageOf<T>(items: T[], page: number): PaginatedDto<T> { const start = (page - 1) * 20; return { items: items.slice(start, start + 20), pagination: { page, limit: 20, has_more: start + 20 < items.length } }; }
-async function requestAllPages<T>(url: string): Promise<Result<T[]>> { const base = new URL(url, window.location.origin); const items: T[] = []; for (let page = 1; page <= 100; page += 1) { base.searchParams.set("page", String(page)); const result = await request<PaginatedDto<T>>(`${base.pathname}?${base.searchParams.toString()}`); if (result.error || !result.data) return { data: items, error: result.error }; items.push(...result.data.items); if (!result.data.pagination.has_more) return { data: items, error: null }; } return { data: items, error: "Pagination Gitea interrompue après 100 pages." }; }
-function getCollaborators(bundle: Bundle): string[] { return [...new Set([...bundle.issues.map((item) => item.author?.login), ...bundle.issues.flatMap((item) => item.assignees.map((user) => user.login)), ...bundle.pulls.map((item) => item.author?.login), ...bundle.commits.flatMap((item) => [item.author?.login, item.committer?.login]), ...bundle.reviews.map((item) => item.author?.login)].filter((value): value is string => Boolean(value)))].sort(); }
-export function getCounts(bundle: Bundle) { return { issues: bundle.issues.length, pulls: bundle.pulls.length, commits: bundle.commits.length, reviews: bundle.reviews.length }; }
-export function filterBundle(bundle: Bundle, collaborator: string): Bundle { if (!collaborator) return bundle; return { ...bundle, issues: bundle.issues.filter((item) => item.author?.login === collaborator || item.assignees.some((user) => user.login === collaborator)), pulls: bundle.pulls.filter((item) => item.author?.login === collaborator), commits: bundle.commits.filter((item) => item.author?.login === collaborator || item.committer?.login === collaborator), reviews: bundle.reviews.filter((item) => item.author?.login === collaborator) }; }
-export function getByDayAndType(bundle: Bundle): Record<string, { issues: number; pulls: number; commits: number; reviews: number }> { const result: Record<string, { issues: number; pulls: number; commits: number; reviews: number }> = {}; const add = (date: string | null | undefined, type: keyof (typeof result)[string]) => { if (!date) return; const day = date.slice(0, 10); result[day] ??= { issues: 0, pulls: 0, commits: 0, reviews: 0 }; result[day][type] += 1; }; bundle.issues.forEach((item) => add(item.created_at ?? item.updated_at, "issues")); bundle.pulls.forEach((item) => add(item.created_at ?? item.updated_at, "pulls")); bundle.commits.forEach((item) => add(item.created_at, "commits")); bundle.reviews.forEach((item) => add(item.submitted_at ?? item.updated_at, "reviews")); return result; }
-export function getCollaboratorVolumes(bundle: Bundle): Array<{ login: string; count: number }> { const counts = new Map<string, number>(); const add = (logins: Array<string | null | undefined>) => { for (const login of new Set(logins.filter((value): value is string => Boolean(value)))) counts.set(login, (counts.get(login) ?? 0) + 1); }; bundle.issues.forEach((item) => add([item.author?.login, ...item.assignees.map((user) => user.login)])); bundle.pulls.forEach((item) => add([item.author?.login])); bundle.commits.forEach((item) => add([item.author?.login, item.committer?.login])); bundle.reviews.forEach((item) => add([item.author?.login])); return [...counts.entries()].map(([login, count]) => ({ login, count })).sort((left, right) => right.count - left.count || left.login.localeCompare(right.login)); }
-async function request<T>(url: string): Promise<Result<T>> { try { const response = await fetch(url); const body: unknown = await response.json(); if (!response.ok) return { data: null, error: response.status === 403 || response.status === 404 ? "Cette capacité Gitea est indisponible pour ce périmètre." : `Accès indisponible (${response.status})` }; return { data: body as T, error: null }; } catch { return { data: null, error: "Impossible de joindre Gitea." }; } }
-function periodRange(period: Period): { since: string; until: string } | null { if (period === "all") return null; const now = new Date(); const start = new Date(now); const end = new Date(now); const day = now.getDay(); if (period === "today") { start.setHours(0, 0, 0, 0); end.setTime(start.getTime() + 86400000); } else if (period === "this_week" || period === "previous_week") { const mondayOffset = (day + 6) % 7; start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - mondayOffset - (period === "previous_week" ? 7 : 0)); end.setTime(start.getTime() + 7 * 86400000); } else { start.setHours(0, 0, 0, 0); start.setDate(1); if (period === "previous_month") start.setMonth(start.getMonth() - 1); end.setTime(start.getTime()); end.setMonth(end.getMonth() + 1); } return { since: start.toISOString(), until: end.toISOString() }; }
+function getCollaborators(bundle: Bundle): string[] {
+  const logins = [
+    ...bundle.issues.flatMap((item) => [item.author?.login, ...item.assignees.map((user) => user.login)]),
+    ...bundle.pulls.map((item) => item.author?.login),
+    ...bundle.commits.flatMap((item) => [item.author?.login, item.committer?.login]),
+    ...bundle.reviews.map((item) => item.author?.login),
+  ];
+  return [...new Set(logins.filter((value): value is string => Boolean(value)))].sort();
+}
+
+export function getCounts(bundle: Bundle): DayCounts {
+  return { issues: bundle.issues.length, pulls: bundle.pulls.length, commits: bundle.commits.length, reviews: bundle.reviews.length };
+}
+
+export function filterBundle(bundle: Bundle, collaborator: string): Bundle {
+  if (!collaborator) return bundle;
+  return {
+    ...bundle,
+    issues: bundle.issues.filter((item) => item.author?.login === collaborator || item.assignees.some((user) => user.login === collaborator)),
+    pulls: bundle.pulls.filter((item) => item.author?.login === collaborator),
+    commits: bundle.commits.filter((item) => item.author?.login === collaborator || item.committer?.login === collaborator),
+    reviews: bundle.reviews.filter((item) => item.author?.login === collaborator),
+  };
+}
+
+/** Activity per UTC day, most recent day first. */
+export function getByDayAndType(bundle: Bundle): Record<string, DayCounts> {
+  const result: Record<string, DayCounts> = {};
+  const add = (date: string | null | undefined, type: keyof DayCounts) => {
+    const day = utcDay(date);
+    if (!day) return;
+    result[day] ??= { issues: 0, pulls: 0, commits: 0, reviews: 0 };
+    result[day][type] += 1;
+  };
+  bundle.issues.forEach((item) => add(item.created_at ?? item.updated_at, "issues"));
+  bundle.pulls.forEach((item) => add(item.created_at ?? item.updated_at, "pulls"));
+  bundle.commits.forEach((item) => add(item.created_at, "commits"));
+  bundle.reviews.forEach((item) => add(item.submitted_at ?? item.updated_at, "reviews"));
+  return Object.fromEntries(Object.entries(result).sort(([left], [right]) => right.localeCompare(left)));
+}
+
+export function getCollaboratorVolumes(bundle: Bundle): Array<{ login: string; count: number }> {
+  const counts = new Map<string, number>();
+  const add = (logins: Array<string | null | undefined>) => {
+    for (const login of new Set(logins.filter((value): value is string => Boolean(value)))) counts.set(login, (counts.get(login) ?? 0) + 1);
+  };
+  bundle.issues.forEach((item) => add([item.author?.login, ...item.assignees.map((user) => user.login)]));
+  bundle.pulls.forEach((item) => add([item.author?.login]));
+  bundle.commits.forEach((item) => add([item.author?.login, item.committer?.login]));
+  bundle.reviews.forEach((item) => add([item.author?.login]));
+  return [...counts.entries()].map(([login, count]) => ({ login, count })).sort((left, right) => right.count - left.count || left.login.localeCompare(right.login));
+}
