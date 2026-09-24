@@ -1,4 +1,4 @@
-import type { CommitDto, GiteaUserDto, IssueDto, PullRequestDto, RepositoryDto, ReviewDto } from "./types";
+import type { CommitDto, GiteaUserDto, IssueDto, MilestoneDto, PullRequestDto, RepositoryDto, ReviewDto } from "./types";
 
 type Raw = Record<string, unknown>;
 
@@ -10,6 +10,22 @@ export function userDto(value: unknown): GiteaUserDto | null {
 export function repositoryDto(value: unknown): RepositoryDto {
   const raw = record(value);
   return { id: numberOrNull(raw.id), name: stringOrNull(raw.name), full_name: stringOrNull(raw.full_name), owner: userDto(raw.owner), description: stringOrNull(raw.description), html_url: stringOrNull(raw.html_url ?? raw.url), private: booleanOrNull(raw.private), archived: booleanOrNull(raw.archived) };
+}
+
+export function milestoneDto(value: unknown): MilestoneDto {
+  const raw = record(value);
+  return {
+    id: numberOrNull(raw.id),
+    title: stringOrNull(raw.title ?? raw.name),
+    description: stringOrNull(raw.description),
+    state: stringOrNull(raw.state),
+    open_issues: numberOrNull(raw.open_issues),
+    closed_issues: numberOrNull(raw.closed_issues),
+    due_on: stringOrNull(raw.due_on),
+    created_at: stringOrNull(raw.created_at),
+    updated_at: stringOrNull(raw.updated_at),
+    html_url: stringOrNull(raw.html_url ?? raw.url),
+  };
 }
 
 export function issueDto(value: unknown): IssueDto {

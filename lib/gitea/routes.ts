@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { GITEA_MAX_PAGE_SIZE, type GiteaServerClient } from "./client";
 import { errorResponse, GiteaAdapterError } from "./errors";
-import { commitDto, issueDto, pullRequestDto, repositoryDto, reviewDto, userDto } from "./dto";
+import { commitDto, issueDto, milestoneDto, pullRequestDto, repositoryDto, reviewDto, userDto } from "./dto";
 import type { PaginatedDto, RepositoryDto } from "./types";
 import { isWithinRange, type DateRange } from "@/lib/date/range";
 
@@ -23,6 +23,7 @@ function completeRange<T extends z.ZodRawShape>(shape: T, startKey: string, endK
 
 export const schemas = {
   pagination: z.object(common),
+  milestones: z.object({ ...repo, ...common, state: z.enum(["all", "open", "closed"]).optional() }),
   issues: completeRange({ ...repo, ...common, state: z.enum(["all", "open", "closed"]).optional(), type: z.enum(["all", "issues", "pulls"]).optional(), since: timestamp.optional(), before: timestamp.optional(), created_by: z.string().max(255).optional(), assigned_by: z.string().max(255).optional() }, "since", "before"),
   pullRequests: completeRange({ ...repo, ...common, state: z.enum(["all", "open", "closed"]).optional(), sort: z.string().optional(), base_branch: z.string().optional(), milestone: z.string().optional(), labels: z.string().optional(), poster: z.string().optional(), since: timestamp.optional(), until: timestamp.optional() }, "since", "until"),
   reviews: completeRange({ ...repo, index: z.coerce.number().int().min(1), ...common, since: timestamp.optional(), until: timestamp.optional() }, "since", "until"),
@@ -31,6 +32,7 @@ export const schemas = {
 
 export async function currentUser(client: GiteaServerClient) { return userDto(await client.getCurrentUser()); }
 export async function repositories(input: z.infer<typeof schemas.pagination>, client: GiteaServerClient) { return pageResult(input, await client.listRepositories(input.page, input.limit), repositoryDto); }
+export async function milestones(input: z.infer<typeof schemas.milestones>, client: GiteaServerClient) { const { owner, repository, ...query } = input; return pageResult(input, await client.listMilestones(owner, repository, query), milestoneDto); }
 export async function issues(input: z.infer<typeof schemas.issues>, client: GiteaServerClient) { const { owner, repository, ...query } = input; const values = await client.listIssues(owner, repository, query); return pageResult(input, filterByDate(values, input.since, input.before, issueDate), issueDto, hasMore(values, input.limit)); }
 export async function pullRequests(input: z.infer<typeof schemas.pullRequests>, client: GiteaServerClient) { const { owner, repository, ...query } = input; const values = await client.listPullRequests(owner, repository, query); return pageResult(input, filterByDate(values, input.since, input.until, pullRequestDate), pullRequestDto, hasMore(values, input.limit)); }
 export async function reviews(input: z.infer<typeof schemas.reviews>, client: GiteaServerClient) { const { owner, repository, index, page, limit } = input; const values = await client.listReviews(owner, repository, index, page, limit); return pageResult(input, filterByDate(values, input.since, input.until, reviewDate), reviewDto, hasMore(values, input.limit)); }

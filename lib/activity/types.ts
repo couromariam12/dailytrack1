@@ -26,6 +26,12 @@ export type ActivityWarning = { repository: string; kind: ActivityKind; code: st
  */
 export const UNAVAILABLE_CODES: ReadonlySet<string> = new Set(["GITEA_NOT_FOUND", "GITEA_CONFLICT", "GITEA_FORBIDDEN"]);
 
+/** Errors for which an empty list must not be presented as a real zero. */
+export const CAPACITY_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
+  ...UNAVAILABLE_CODES,
+  "GITEA_TIMEOUT",
+]);
+
 export type ActivityBundle = {
   issues: IssueDto[];
   pulls: PullRequestDto[];

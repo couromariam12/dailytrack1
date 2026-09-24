@@ -27,6 +27,10 @@ export class GiteaServerClient {
     return this.list("/user/repos", { page, limit });
   }
 
+  public listMilestones(owner: string, repository: string, query: GiteaQuery): Promise<JsonValue[]> {
+    return this.list(this.repoPath(owner, repository, "/milestones"), query);
+  }
+
   public listIssues(owner: string, repository: string, query: GiteaQuery): Promise<JsonValue[]> {
     return this.list(this.repoPath(owner, repository, "/issues"), query);
   }

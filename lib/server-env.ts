@@ -9,7 +9,7 @@ export function getServerEnv() {
     giteaOauthClientId: process.env.GITEA_OAUTH_CLIENT_ID ?? "",
     giteaOauthClientSecret: process.env.GITEA_OAUTH_CLIENT_SECRET ?? "",
     giteaRedirectUri: process.env.GITEA_OAUTH_REDIRECT_URI ?? "",
-    giteaOauthScopes: process.env.GITEA_OAUTH_SCOPES ?? "read:user,read:repository",
+    giteaOauthScopes: process.env.GITEA_OAUTH_SCOPES ?? "read:user,read:repository,read:issue",
     authSecret: process.env.AUTH_SECRET ?? "",
   } as const;
 }

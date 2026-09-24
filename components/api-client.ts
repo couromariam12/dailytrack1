@@ -20,7 +20,7 @@ export async function request<T>(url: string, signal?: AbortSignal): Promise<Res
       window.location.assign("/api/auth/gitea/login");
       return { data: null, error: "Session expirée, reconnexion…" };
     }
-    if (response.status === 403 || response.status === 404) return { data: null, error: "Cette capacité Gitea est indisponible pour ce périmètre." };
+    if (response.status === 403 || response.status === 404 || response.status === 409 || response.status === 504) return { data: null, error: "Cette capacité Gitea est indisponible pour ce périmètre." };
     return { data: null, error: errorField(body, "message") ?? `Accès indisponible (${response.status})` };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return { data: null, error: null };

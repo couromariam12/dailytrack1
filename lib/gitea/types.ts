@@ -21,6 +21,19 @@ export type RepositoryDto = {
   archived: boolean | null;
 };
 
+export type MilestoneDto = {
+  id: number | null;
+  title: string | null;
+  description: string | null;
+  state: string | null;
+  open_issues: number | null;
+  closed_issues: number | null;
+  due_on: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  html_url: string | null;
+};
+
 export type IssueDto = {
   id: number | null;
   number: number | null;

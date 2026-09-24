@@ -1,4 +1,4 @@
-export type AuthErrorCode = "AUTH_CONFIGURATION" | "OAUTH_PROVIDER_ERROR" | "OAUTH_STATE_MISMATCH" | "OAUTH_INVALID_CALLBACK" | "SESSION_REQUIRED" | "SESSION_EXPIRED" | "SESSION_INVALID" | "DEV_AUTH_FORBIDDEN";
+export type AuthErrorCode = "AUTH_CONFIGURATION" | "OAUTH_PROVIDER_ERROR" | "OAUTH_STATE_MISMATCH" | "OAUTH_INVALID_CALLBACK" | "SESSION_REQUIRED" | "SESSION_EXPIRED" | "SESSION_INVALID" | "DEV_AUTH_FORBIDDEN" | "ADMIN_REQUIRED";
 
 const messages: Record<AuthErrorCode, string> = {
   AUTH_CONFIGURATION: "Authentication is not configured.",
@@ -9,6 +9,7 @@ const messages: Record<AuthErrorCode, string> = {
   SESSION_EXPIRED: "The session has expired.",
   SESSION_INVALID: "The session is invalid.",
   DEV_AUTH_FORBIDDEN: "Development authentication is disabled in production.",
+  ADMIN_REQUIRED: "Administrator access is required.",
 };
 
 export class AuthError extends Error {

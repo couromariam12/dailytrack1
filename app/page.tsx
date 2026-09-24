@@ -10,6 +10,7 @@ const authErrorMessages: Record<AuthErrorCode, string> = {
   SESSION_EXPIRED: "Votre session a expiré. Reconnectez-vous.",
   SESSION_INVALID: "Votre session n’est plus valide. Reconnectez-vous.",
   DEV_AUTH_FORBIDDEN: "DAILYTRACK_DEV_AUTH=true est interdit en production : désactivez-le pour utiliser l’application.",
+  ADMIN_REQUIRED: "L’accès à l’espace admin est réservé aux administrateurs.",
 };
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ auth_error?: string }> }) {

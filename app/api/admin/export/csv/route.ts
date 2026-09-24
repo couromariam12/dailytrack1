@@ -1,0 +1,22 @@
+import { NextRequest, NextResponse } from "next/server";
+import { collectAdminExport } from "@/lib/admin/export-data";
+import { renderAdminCsv } from "@/lib/admin/export-renderer";
+import { exportFilters } from "@/lib/admin/export-schema";
+import { requireAdminGiteaClient } from "@/lib/auth/admin";
+import { AuthError } from "@/lib/auth/errors";
+import { routeError } from "@/lib/gitea/routes";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  const parsed = exportFilters.safeParse(Object.fromEntries(request.nextUrl.searchParams.entries()));
+  if (!parsed.success) return NextResponse.json({ error: { code: "INVALID_PARAMETERS", message: "Repository et filtres d’export invalides." } }, { status: 400 });
+  try {
+    const bundle = await collectAdminExport(await requireAdminGiteaClient(request), parsed.data);
+    return new NextResponse(renderAdminCsv(bundle, parsed.data), { status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="dailytrack-admin.csv"', "cache-control": "no-store" } });
+  } catch (error) {
+    if (error instanceof AuthError) return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
+    const failure = routeError(error);
+    return NextResponse.json(failure.body, { status: failure.status });
+  }
+}

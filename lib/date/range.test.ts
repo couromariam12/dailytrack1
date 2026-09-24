@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayRange, isWithinRange, periodRange, utcDay } from "./range";
+import { customDateRange, dayRange, isWithinRange, periodRange, utcDay } from "./range";
 
 describe("daily date ranges", () => {
   it("uses a half-open interval", () => {
@@ -37,5 +37,15 @@ describe("named periods", () => {
 
   it("has no bounds for all dates", () => {
     expect(periodRange("all", now)).toBeNull();
+  });
+
+  it("builds a custom inclusive calendar range with a half-open end", () => {
+    expect(customDateRange("2026-09-18", "2026-09-20")).toEqual({ start: "2026-09-18T00:00:00.000Z", end: "2026-09-21T00:00:00.000Z" });
+    expect(periodRange("custom", now)).toBeNull();
+  });
+
+  it("rejects an incomplete or reversed custom range", () => {
+    expect(customDateRange("", "2026-09-20")).toBeNull();
+    expect(customDateRange("2026-09-21", "2026-09-20")).toBeNull();
   });
 });

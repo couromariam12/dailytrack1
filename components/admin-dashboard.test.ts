@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommitDto, IssueDto, PullRequestDto, ReviewDto } from "@/lib/gitea/types";
-import { filterBundle, getByDayAndType, getCollaboratorVolumes, getCounts, type Bundle } from "./admin-dashboard";
+import { filterBundle, getByDayAndType, getCollaboratorVolumes, getCounts, getMetricValue, kindUnavailable, type Bundle } from "./admin-dashboard";
 
 const user = (login: string) => ({ id: null, login, full_name: null, html_url: null, avatar_url: null });
 const issue = (type: IssueDto["type"], login: string, date: string): IssueDto => ({ id: null, number: null, type, title: null, state: "open", author: user(login), assignees: [], labels: [], created_at: date, updated_at: date, html_url: null });
@@ -38,5 +38,17 @@ describe("Admin normalized dataset", () => {
     const data = bundle({ pulls: [pull("alice", "2026-09-17T23:59:59Z")] });
     expect(getCounts(data)).toEqual({ issues: 0, pulls: 1, commits: 0, reviews: 0 });
     expect(getByDayAndType(data)["2026-09-18"]).toBeUndefined();
+  });
+
+  it("keeps a successful empty kind as zero", () => {
+    const data = bundle();
+    expect(kindUnavailable(data, "issues")).toBe(false);
+    expect(getMetricValue(data, "issues")).toBe(0);
+  });
+
+  it.each(["GITEA_FORBIDDEN", "GITEA_NOT_FOUND", "GITEA_CONFLICT", "GITEA_TIMEOUT"])('marks %s as unavailable instead of zero', (code) => {
+    const data = bundle({ warnings: [{ repository: "acme/app", kind: "issues", code, message: "unavailable" }] });
+    expect(kindUnavailable(data, "issues")).toBe(true);
+    expect(getMetricValue(data, "issues")).toBeNull();
   });
 });

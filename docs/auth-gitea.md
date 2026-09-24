@@ -22,7 +22,7 @@ GITEA_OAUTH_CLIENT_ID=
 # Optional for a public PKCE client.
 GITEA_OAUTH_CLIENT_SECRET=
 GITEA_OAUTH_REDIRECT_URI=http://127.0.0.1:3001/api/auth/gitea/callback
-GITEA_OAUTH_SCOPES=read:user,read:repository
+GITEA_OAUTH_SCOPES=read:user,read:repository,read:issue
 AUTH_SECRET=
 ```
 

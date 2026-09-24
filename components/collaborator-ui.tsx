@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { UNAVAILABLE_CODES, type ActivityWarning } from "@/lib/activity/types";
+import { CAPACITY_UNAVAILABLE_CODES, type ActivityWarning } from "@/lib/activity/types";
 import type { CommitDto, IssueDto, PullRequestDto, ReviewDto } from "@/lib/gitea/types";
 
 export const PAGE_SIZE = 20;
@@ -46,7 +46,7 @@ export function WarningNotice({ warnings }: { warnings: ReadonlyArray<ActivityWa
   const where = repositories.length > 3 ? `${repositories.length} repositories` : repositories.join(", ");
   const message = warnings.every((warning) => warning.code === "TRUNCATED")
     ? `Résultats tronqués aux éléments les plus récents pour ${where}.`
-    : warnings.every((warning) => UNAVAILABLE_CODES.has(warning.code))
+    : warnings.every((warning) => CAPACITY_UNAVAILABLE_CODES.has(warning.code))
       ? `Indisponible dans Gitea pour ${where} (fonction désactivée, dépôt vide ou accès refusé).`
       : `Données Gitea partielles pour ${where}.`;
   return <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{message}</p>;

@@ -1,6 +1,6 @@
 export type DateRange = { start: string; end: string };
 
-export type Period = "all" | "today" | "yesterday" | "this_week" | "previous_week" | "this_month" | "previous_month";
+export type Period = "all" | "today" | "yesterday" | "this_week" | "previous_week" | "this_month" | "previous_month" | "custom";
 
 export const periodOptions: ReadonlyArray<readonly [Period, string]> = [
   ["all", "Toutes les dates"],
@@ -10,6 +10,7 @@ export const periodOptions: ReadonlyArray<readonly [Period, string]> = [
   ["previous_week", "Semaine précédente"],
   ["this_month", "Ce mois"],
   ["previous_month", "Mois précédent"],
+  ["custom", "Période personnalisée"],
 ];
 
 const DAY_MS = 86_400_000;
@@ -22,6 +23,21 @@ export function dayRange(date: string): DateRange {
   const start = new Date(`${date}T00:00:00.000Z`);
   const end = new Date(start.getTime() + DAY_MS);
   return { start: start.toISOString(), end: end.toISOString() };
+}
+
+/** A custom range includes every selected calendar day and ends at the next midnight. */
+export function customDateRange(startDate: string, endDate: string): DateRange | null {
+  if (!isCalendarDate(startDate) || !isCalendarDate(endDate)) return null;
+  const start = dayRange(startDate);
+  const end = dayRange(endDate);
+  if (Date.parse(start.start) > Date.parse(end.start)) return null;
+  return { start: start.start, end: end.end };
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
 
 export function isWithinRange(value: string | null | undefined, range: DateRange): boolean {
@@ -53,6 +69,8 @@ export function periodRange(period: Period, now: Date = new Date()): DateRange |
       const offset = period === "previous_month" ? -1 : 0;
       return range(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1), Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset + 1, 1));
     }
+    case "custom":
+      return null;
   }
 }
 

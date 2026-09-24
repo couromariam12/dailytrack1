@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { GiteaAdapterError } from "./errors";
-import { allRepositories, commits, currentUser, issues, pullRequests, repositories, routeError, schemas } from "./routes";
+import { allRepositories, commits, currentUser, issues, milestones, pullRequests, repositories, routeError, schemas } from "./routes";
 import type { GiteaServerClient } from "./client";
 
 const client = {
@@ -19,6 +19,12 @@ describe("Next.js Gitea adapter", () => {
   it("normalizes the current user and paginated repositories", async () => {
     await expect(currentUser(client)).resolves.toMatchObject({ login: "alice", id: 7 });
     await expect(repositories({ page: 1, limit: 20 }, client)).resolves.toMatchObject({ pagination: { page: 1, limit: 20, has_more: false }, items: [{ name: "app", owner: { login: "acme" } }] });
+  });
+
+  it("normalizes repository milestones and forwards pagination", async () => {
+    const milestoneClient = { listMilestones: vi.fn().mockResolvedValue([{ id: 4, title: "Sprint 4", state: "open", open_issues: 2, closed_issues: 3, due_on: "2026-09-30T00:00:00Z", html_url: "https://gitea.example/acme/app/milestone/4" }]) } as unknown as GiteaServerClient;
+    await expect(milestones({ owner: "acme", repository: "app", page: 1, limit: 20, state: "all" }, milestoneClient)).resolves.toMatchObject({ items: [{ title: "Sprint 4", open_issues: 2, closed_issues: 3, html_url: "https://gitea.example/acme/app/milestone/4" }], pagination: { has_more: false } });
+    expect(milestoneClient.listMilestones).toHaveBeenCalledWith("acme", "app", { page: 1, limit: 20, state: "all" });
   });
 
   it("forwards repository filters and normalizes issues and commits", async () => {
